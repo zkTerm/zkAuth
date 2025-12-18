@@ -1,7 +1,7 @@
 {
   "name": "@zkterm/zkauth",
-  "version": "1.0.0",
-  "description": "Privacy-first multi-chain authentication with Shamir Secret Sharing",
+  "version": "1.8.4",
+  "description": "100% Decentralized passwordless authentication with Google OAuth + Shamir 2-of-3 multi-chain key distribution. No server secrets required.",
   "main": "src/index.ts",
   "types": "src/index.ts",
   "scripts": {
@@ -15,15 +15,30 @@
     "shamir",
     "multi-chain",
     "web3auth",
-    "privacy"
+    "privacy",
+    "decentralized",
+    "passwordless",
+    "google-oauth",
+    "solana",
+    "starknet",
+    "zcash"
   ],
   "author": "zkTerm",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zkterm/zkauth"
+  },
   "dependencies": {
     "@zkterm/zktoolkit": "workspace:*"
   },
   "peerDependencies": {
     "@solana/web3.js": "^1.87.0",
-    "starknet": "^6.0.0"
+    "starknet": "^6.0.0",
+    "react": "^18.0.0",
+    "qrcode": "^1.5.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

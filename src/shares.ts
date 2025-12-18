@@ -1,5 +1,5 @@
 import type { MasterKey, ShareData, EncryptedShare, SplitResult, ChainType } from './types';
-import { encryptWithPK, decryptWithPK } from './masterkey';
+import { encryptWithPK, decryptWithPK, encryptWithWrappingKey, decryptWithWrappingKey } from './masterkey';
 
 const PRIME = BigInt('21888242871839275222246405745257275088548364400416034343698204186575808495617');
 
@@ -153,6 +153,39 @@ export function decryptShare(encryptedShare: EncryptedShare, pk: string): ShareD
     iv: encryptedShare.iv,
     tag: encryptedShare.tag
   }, pk);
+  
+  return JSON.parse(decrypted);
+}
+
+/**
+ * Encrypt share using Google credentials (for dual-key architecture).
+ * This enables returning users to login with Google only - no Secret Phrase needed.
+ */
+export function encryptShareWithGoogle(share: ShareData, shareIndex: number, chain: ChainType, googleUserId: string, email: string): EncryptedShare {
+  const shareJson = JSON.stringify(share);
+  const encrypted = encryptWithWrappingKey(shareJson, googleUserId, email);
+  
+  return {
+    shareIndex,
+    encryptedData: encrypted.ciphertext,
+    iv: encrypted.iv,
+    tag: encrypted.tag,
+    chain,
+    txHash: undefined,
+    storageAddress: undefined
+  };
+}
+
+/**
+ * Decrypt share using Google credentials (for dual-key architecture).
+ * This enables returning users to login with Google only - no Secret Phrase needed.
+ */
+export function decryptShareWithGoogle(encryptedShare: EncryptedShare, googleUserId: string, email: string): ShareData {
+  const decrypted = decryptWithWrappingKey({
+    ciphertext: encryptedShare.encryptedData,
+    iv: encryptedShare.iv,
+    tag: encryptedShare.tag
+  }, googleUserId, email);
   
   return JSON.parse(decrypted);
 }

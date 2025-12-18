@@ -1,50 +1,16 @@
-# @zkterm/zkauth
+# @zkterm/zkauth v1.8.4
 
-Privacy-first multi-chain authentication with Shamir Secret Sharing.
+Cryptographic primitives for decentralized passwordless authentication with Shamir Secret Sharing.
 
-## Architecture
+## What This Package Provides
 
-```
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                           zkAuth ARCHITECTURE                                 ║
-║                    Privacy-First Multi-Chain Authentication                  ║
-╚══════════════════════════════════════════════════════════════════════════════╝
+This package provides the **building blocks** for zkAuth:
+- Lookup key derivation from Google OAuth credentials
+- Master key generation and encryption/decryption
+- Shamir 2-of-3 secret sharing
+- Share encryption with Google credentials (dual-key architecture)
 
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  USER LAYER                                                                  │
-│  └─ Login with Google / X (Twitter) via Web3Auth                            │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  AUTHENTICATION LAYER                                                        │
-│  └─ Web3Auth → secp256k1 Private Key (PK)                                   │
-│  └─ PK used to decrypt Master Key shares                                     │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  ENCRYPTION LAYER                                                            │
-│  └─ zkTerm Master Key (256-bit)                                              │
-│  └─ Split using Shamir Secret Sharing (2-of-3)                              │
-│  └─ Each share encrypted with PK                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                    ┌───────────────┼───────────────┐
-                    ▼               ▼               ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  BLOCKCHAIN STORAGE LAYER                                                    │
-│                                                                              │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐                       │
-│  │    ZCASH     │  │   STARKNET   │  │    SOLANA    │                       │
-│  │  (t-address) │  │   (Cairo)    │  │    (PDA)     │                       │
-│  │   Share 1    │  │   Share 2    │  │   Share 3    │                       │
-│  └──────────────┘  └──────────────┘  └──────────────┘                       │
-│                                                                              │
-│  Any 2 chains = reconstruct Master Key                                      │
-│  1 chain down? Still works with other 2!                                    │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+> **Note:** On-chain storage, registration flows, and 2FA are implemented in the zkTerm server, not in this package. This package provides the cryptographic primitives.
 
 ## Installation
 
@@ -52,149 +18,197 @@ Privacy-first multi-chain authentication with Shamir Secret Sharing.
 npm install @zkterm/zkauth
 ```
 
-## Usage
+## Core Concepts
 
-### Initialize
+### Dual-Key Architecture
 
-```typescript
-import { ZkAuth } from '@zkterm/zkauth';
+The package implements a dual-key system:
+1. **Wrapping Key** - Derived from Google OAuth credentials (email + googleUserId)
+2. **Master Key** - The actual secret being protected
 
-const zkAuth = new ZkAuth({
-  chains: {
-    zcash: { rpcUrl: 'https://zcash-rpc.example.com' },
-    starknet: { rpcUrl: 'https://starknet-rpc.example.com' },
-    solana: { rpcUrl: 'https://api.mainnet-beta.solana.com' }
-  },
-  threshold: 2,    // 2-of-3
-  totalShares: 3
-});
-```
+Shares are encrypted with the Wrapping Key, enabling:
+- **Registration**: Secret Phrase used ONCE to generate Master Key
+- **Login**: Google OAuth only (no phrase needed)
 
-### Register (First Time)
+### Shamir 2-of-3
 
-```typescript
-// pk = Private Key from Web3Auth
-const result = await zkAuth.register(pk);
-
-console.log(result);
-// {
-//   success: true,
-//   userId: 'zkauth:abc123...',
-//   shares: [...],
-//   masterKeyHash: '...'
-// }
-```
-
-### Login (Returning User)
-
-```typescript
-const loginResult = await zkAuth.login(pk);
-
-console.log(loginResult);
-// {
-//   success: true,
-//   userId: 'zkauth:abc123...',
-//   masterKey: { key: '...', keyBytes: Uint8Array, createdAt: ... },
-//   sharesUsed: 2
-// }
-```
-
-### Create Session
-
-```typescript
-const session = zkAuth.createSession(loginResult);
-
-// Encrypt data
-const encrypted = await session.encrypt('sensitive data');
-
-// Decrypt data
-const decrypted = await session.decrypt(encrypted);
-```
-
-### Direct Encryption
-
-```typescript
-const { masterKey } = loginResult;
-
-// Encrypt
-const encrypted = zkAuth.encrypt('my data', masterKey);
-
-// Decrypt
-const decrypted = zkAuth.decrypt(encrypted, masterKey);
-```
-
-## Flows
-
-### Registration Flow
-
-1. User login Google/X → Web3Auth → PK
-2. Generate Master Key (random 256-bit)
-3. Shamir split → 3 shares
-4. Encrypt each share with PK
-5. Store on 3 chains: Zcash, Starknet, Solana
-6. User registered!
-
-### Login Flow
-
-1. User login Google/X → Web3Auth → PK
-2. Fetch 2 encrypted shares from any 2 chains
-3. Decrypt shares with PK
-4. Shamir reconstruct (2-of-3)
-5. Master Key ready!
-6. Use for zkTerm encryption
-
-## Security Properties
-
-- **NO PASSWORD** - Social login only, no password to remember
-- **NON-CUSTODIAL** - No single party holds full Master Key
-- **FAULT TOLERANT** - 1 chain down? 2-of-3 still works
-- **PRIVACY** - Encrypted shares, no plaintext on-chain
-- **DECENTRALIZED** - 3 independent blockchains, no single point
-- **RECOVERABLE** - Same social login = same PK = same Master Key
-- **ZK-READY** - Master Key can generate STARK proofs
+Master Key is split into 3 shares. Any 2 shares can reconstruct the original.
 
 ## API Reference
 
-### ZkAuth Class
-
-| Method | Description |
-|--------|-------------|
-| `register(pk)` | Register new user, split & store Master Key |
-| `login(pk)` | Login existing user, reconstruct Master Key |
-| `isRegistered(userId)` | Check if user is registered |
-| `createSession(loginResult)` | Create session with encrypt/decrypt |
-| `encrypt(data, masterKey)` | Encrypt data with Master Key |
-| `decrypt(encrypted, masterKey)` | Decrypt data with Master Key |
-| `getUserId(pk)` | Get user ID from PK |
-
-### Types
+### Lookup Functions
 
 ```typescript
-interface ZkAuthConfig {
-  chains: {
-    zcash?: ZcashConfig;
-    starknet?: StarknetConfig;
-    solana?: SolanaConfig;
-  };
-  threshold?: number;    // default: 2
-  totalShares?: number;  // default: 3
+import { deriveLookupKeys, derive2FALookupKey } from '@zkterm/zkauth';
+
+// From Google OAuth callback
+const email = 'user@gmail.com';
+const googleUserId = '123456789012345678901';
+
+// Derive deterministic lookup keys - NO server secrets needed
+const keys = deriveLookupKeys(email, googleUserId);
+// {
+//   starknetLookupKey: string,
+//   solanaLookupKey: string,
+//   zcashLookupKey: string,
+//   userId: string
+// }
+
+// For 2FA data lookup
+const twoFAKey = derive2FALookupKey(email, googleUserId);
+```
+
+### Master Key Functions
+
+```typescript
+import { 
+  generateMasterKey, 
+  hashMasterKey,
+  encryptWithWrappingKey,
+  decryptWithWrappingKey,
+  deriveWrappingKey
+} from '@zkterm/zkauth';
+
+// Generate new 256-bit master key
+const masterKey = generateMasterKey();
+
+// Hash for verification
+const hash = hashMasterKey(masterKey);
+
+// Encrypt data with Google credentials
+const encrypted = encryptWithWrappingKey(data, googleUserId, email);
+// { ciphertext, iv, tag }
+
+// Decrypt with same credentials
+const decrypted = decryptWithWrappingKey(encrypted, googleUserId, email);
+```
+
+### Shamir Secret Sharing
+
+```typescript
+import { 
+  splitMasterKey, 
+  combineShares,
+  encryptShareWithGoogle,
+  decryptShareWithGoogle,
+  getChainForShareIndex
+} from '@zkterm/zkauth';
+
+// Split master key into 3 shares (2 needed to reconstruct)
+const { shares, threshold, totalShares } = splitMasterKey(masterKey, 2, 3);
+
+// Encrypt each share with Google credentials
+const encryptedShare = encryptShareWithGoogle(
+  shares[0], 
+  1, 
+  'zcash', 
+  googleUserId, 
+  email
+);
+
+// Decrypt share
+const decryptedShare = decryptShareWithGoogle(
+  encryptedShare, 
+  googleUserId, 
+  email
+);
+
+// Reconstruct with any 2 shares
+const reconstructedKey = combineShares([shares[0], shares[2]]);
+
+// Get chain for share index
+const chain = getChainForShareIndex(1); // 'zcash'
+```
+
+## Types
+
+```typescript
+interface LookupKeys {
+  starknetLookupKey: string;
+  solanaLookupKey: string;
+  zcashLookupKey: string;
+  userId: string;
 }
 
 interface MasterKey {
-  key: string;           // hex string
-  keyBytes: Uint8Array;  // raw bytes
-  createdAt: number;     // timestamp
+  key: string;           // 64-char hex (256-bit)
+  keyBytes: Uint8Array;  // raw 32 bytes
+  createdAt: number;     // unix timestamp
 }
 
 interface EncryptedShare {
   shareIndex: number;
   encryptedData: string;
   iv: string;
+  tag: string;
   chain: 'zcash' | 'starknet' | 'solana';
   txHash?: string;
   storageAddress?: string;
 }
+
+interface ShareData {
+  x: string;
+  y: string;
+}
+
+interface EncryptionResult {
+  ciphertext: string;
+  iv: string;
+  tag: string;
+}
 ```
+
+## Complete API
+
+### Exports
+
+```typescript
+// Lookup
+export { deriveLookupKeys, deriveShareLookupKeys, deriveEmailLookupKey, 
+         deriveUserId, deriveSolanaMemoPrefix, derive2FALookupKey,
+         initializeLookupSalt } from './lookup';
+
+// Master Key
+export { generateMasterKey, masterKeyFromHex, hashMasterKey,
+         deriveEncryptionKey, encryptWithPK, decryptWithPK,
+         encryptData, decryptData, generateUserId,
+         deriveWrappingKey, encryptWithWrappingKey, 
+         decryptWithWrappingKey } from './masterkey';
+
+// Shamir Shares
+export { splitMasterKey, combineShares, encryptShare, decryptShare,
+         encryptShareWithGoogle, decryptShareWithGoogle,
+         getChainForShareIndex } from './shares';
+
+// Chain Storage (stub implementations)
+export { ZcashShareStorage, StarknetShareStorage, 
+         SolanaShareStorage } from './chains';
+
+// Types
+export type { ZkAuthConfig, MasterKey, EncryptedShare, ShareData,
+              SplitResult, EncryptionResult, ChainType, 
+              LookupKeys, ShareLookupKey } from './types';
+```
+
+## Security Properties
+
+| Property | Description |
+|----------|-------------|
+| **No Server Secrets** | Lookup keys derived from Google OAuth only |
+| **Deterministic** | Same credentials = same keys |
+| **AES-256-GCM** | Authenticated encryption for shares |
+| **Finite Field Math** | Shamir over 254-bit prime field |
+
+## Changelog
+
+### v1.8.4 (2024-12)
+- Added `derive2FALookupKey` for 2FA data lookup
+- Fully decentralized lookup key derivation (no server salt)
+- Dual-key architecture with `encryptShareWithGoogle`/`decryptShareWithGoogle`
+- Deprecated `initializeLookupSalt` (no-op for backwards compat)
+
+### v1.0.0
+- Initial release
 
 ## License
 
